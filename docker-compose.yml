@@ -1,0 +1,52 @@
+version: '3.8'
+services:
+
+  rust-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: rustserver-dc
+    ports:
+      - 10000:10000
+    volumes:
+      - './server:/usr/src/server'
+      - '/usr/src/server/target'
+
+  userservice:
+    build:
+      context: ./userservice
+      dockerfile: Dockerfile
+    container_name: userservice
+    restart: always
+    ports:
+      - 3000:3000
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - MONGO_DB_ONLINE_PASS=${MONGO_DB_ONLINE_PASS}
+      - MONGO_DB_ONLINE_URL=${MONGO_DB_ONLINE_URL}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_VER_SECRET=${EMAIL_VER_SECRET}
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "0.0.0.0:27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - type: volume
+        source: MONGO_DATA
+        target: /data/db
+      - type: volume
+        source: MONGO_CONFIG
+        target: /data/configdb
+
+volumes:
+  MONGO_DATA:
+    name: MONGO_DATA
+  MONGO_CONFIG:
+    name: MONGO_CONFIG

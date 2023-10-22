@@ -10,7 +10,7 @@ services:
       - 10000:10000
     volumes:
       - './server:/usr/src/server'
-      - '/usr/src/server/target'
+
 
   userservice:
     build:

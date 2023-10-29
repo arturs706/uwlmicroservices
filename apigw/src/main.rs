@@ -76,18 +76,20 @@ async fn handle_request(req: Request<Body>, rate_limiter: Arc<RateLimiter>, addr
     let issuer = "gateway".to_string();
     let gateway_access = true;
     let jwt_secret: String = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-
     let jwt_token = jsonwebtoken::encode(&Header::new(Algorithm::HS256), &GatewayAuthClaims::new(issuer, gateway_access, ),&EncodingKey::from_secret(jwt_secret.as_bytes())).unwrap();
+
+
+    
     match req.uri().path() {
         "/service" => {
-           
             if !rate_limiter.allow(addr) {
                 return Ok(Response::new(Body::from("Rate limit exceeded for service")))
             } 
             let client = hyper::Client::new();
             let forwarded_req = Request::builder()
                 .method(req.method())
-                .uri("http://localhost:3000")
+                .uri("http://userservice:11000")
+                // .uri("http://localhost:11000")
                 .header("Authorization", format!("Bearer {}", jwt_token))
                 .body(req.into_body())
                 .unwrap();
@@ -95,9 +97,25 @@ async fn handle_request(req: Request<Body>, rate_limiter: Arc<RateLimiter>, addr
             *resp.status_mut() = hyper::StatusCode::CREATED;
             Ok(resp)
         },
-        
+        "/servicetwo" => {
+            if !rate_limiter.allow(addr) {
+                return Ok(Response::new(Body::from("Rate limit exceeded for service")))
+            } 
+            let client = hyper::Client::new();
+            let forwarded_req = Request::builder()
+                .method(req.method())
+                .uri("http://userservice:12000")
+                // .uri("http://localhost:11000")
+                .header("Authorization", format!("Bearer {}", jwt_token))
+                .body(req.into_body())
+                .unwrap();
+            let mut resp: Response<Body> = client.request(forwarded_req).await?;
+            *resp.status_mut() = hyper::StatusCode::CREATED;
+            Ok(resp)
+        },
         _ => Ok(Response::new(Body::from("Not Found"))), 
     }
+    
 }
 
 

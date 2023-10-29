@@ -1,0 +1,12 @@
+#V2
+DEFINE TABLE users SCHEMAFULL;
+DEFINE FIELD fullName ON TABLE users TYPE string ASSERT $value != NONE;
+DEFINE FIELD dob ON TABLE users TYPE string ASSERT $value != NONE;
+DEFINE FIELD gender ON TABLE users TYPE string ASSERT $value != NONE;
+DEFINE FIELD mob_phone ON TABLE users TYPE string ASSERT $value != NONE;
+DEFINE FIELD email ON TABLE users TYPE string ASSERT string::is::email($value);
+DEFINE FIELD passwd ON TABLE users TYPE string ASSERT $value != NONE;
+DEFINE FIELD email_ver_token ON TABLE users TYPE string;
+DEFINE FIELD createdAt ON TABLE user TYPE datetime DEFAULT time::now();
+DEFINE INDEX usersEmailIndex ON TABLE users COLUMNS email UNIQUE;
+DEFINE INDEX usersMob_phone_Index ON TABLE users COLUMNS mob_phone UNIQUE;

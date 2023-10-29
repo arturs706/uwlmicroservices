@@ -1,52 +1,55 @@
 version: '3.8'
+
+networks:
+  app-network:
+
 services:
 
-  rust-server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: rustserver-dc
-    ports:
-      - 10000:10000
-    volumes:
-      - './server:/usr/src/server'
+
+  # rust-apigw:
+  #   build:
+  #     context: ./apigw
+  #     dockerfile: Dockerfile
+  #   container_name: rustapigw-dc
+  #   networks:
+  #     - app-network
+  #   ports:
+  #     - 10000:10000
+  #   volumes:
+  #     - './apigw:/usr/src/apigw'
+  #   environment:
+  #     - JWT_SECRET=${JWT_SECRET}
 
 
-  userservice:
-    build:
-      context: ./userservice
-      dockerfile: Dockerfile
-    container_name: userservice
+  # rust-userservice:
+  #   build:
+  #     context: ./userservice
+  #     dockerfile: Dockerfile
+  #   container_name: rustuserservice-dc
+  #   networks:
+  #     - app-network
+  #   ports:
+  #     - 11000:11000
+  #   volumes:
+  #     - './userservice:/usr/src/userservice'
+  #   environment:
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - DB_ACC=${DB_ACC}
+  #     - DB_PASS=${DB_PASS}
+  #     - DB_IP=${DB_IP}
+  #     - DB_NS=${DB_NS}
+  #     - DB_NAME=£{DB_NAME}
+  #   depends_on:
+  #     - surrealdb
+
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: surrealdb
     restart: always
+    networks:
+      - app-network
+    command: start --auth --user ${DB_ACC} --pass ${DB_PASS} file:/data/database.db
     ports:
-      - 3000:3000
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - JWT_SECRET=${JWT_SECRET}
-      - MONGO_DB_ONLINE_PASS=${MONGO_DB_ONLINE_PASS}
-      - MONGO_DB_ONLINE_URL=${MONGO_DB_ONLINE_URL}
-      - SMTP_USERNAME=${SMTP_USERNAME}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - EMAIL_VER_SECRET=${EMAIL_VER_SECRET}
-
-  mongo:
-    image: mongo:latest
-    container_name: mongo
-    ports:
-      - "0.0.0.0:27017:27017"
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+    - 8000:8000
     volumes:
-      - type: volume
-        source: MONGO_DATA
-        target: /data/db
-      - type: volume
-        source: MONGO_CONFIG
-        target: /data/configdb
-
-volumes:
-  MONGO_DATA:
-    name: MONGO_DATA
-  MONGO_CONFIG:
-    name: MONGO_CONFIG
+    - ./data:/data

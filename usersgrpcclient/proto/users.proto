@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package users;
+
+// User registration request message
+message UserAuthRequest {
+  string full_name = 1;
+  string dob = 2;
+  string gender = 3;
+  string mob_phone = 4;
+  string email = 5;
+  string passwd = 6;
+  string email_ver_token = 7;
+}
+
+// User registration response message
+message UserAuthResponse {
+  string user_id = 1;
+  string message = 2;
+}
+
+// User registration service
+service UserAuth {
+  rpc RegisterUser(UserAuthRequest) returns (UserAuthResponse);
+}

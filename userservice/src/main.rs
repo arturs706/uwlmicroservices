@@ -1,4 +1,3 @@
-
 #[allow(dead_code)]
 use axum::routing::post;
 use axum::{routing::get, Router};
@@ -10,6 +9,8 @@ mod errors;
 mod users;
 use dotenv::dotenv;
 mod mware;
+use mware::auth_middleware;
+use axum::middleware;
 
 
 #[derive(Clone)]
@@ -49,6 +50,7 @@ async fn connect_to_server() -> surrealdb::Result<Surreal<Client>> {
     Ok(db)
 }
 
+
 #[tokio::main]
 async fn main() {
     let db_result = connect_to_server().await;
@@ -71,9 +73,9 @@ async fn main() {
     };
 
     let app = Router::new()
-        // .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .route("/api/v1/users", get(users::fetchusershandler))
         .route("/api/v1/users/register", post(users::create_user))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state);
     // run it
     let addr = SocketAddr::from(([0, 0, 0, 0], 11000));

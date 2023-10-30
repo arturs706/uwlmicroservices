@@ -78,7 +78,7 @@ impl UserAuthClaims {
 pub async fn fetchusershandler(State(state): State<AppState>) -> impl IntoResponse {
     let db = &state.database.db;
     let users_result: Result<Vec<User>, surrealdb::Error> = db.select("users").await;
-
+    // get incoming request headers
     match users_result {
         Ok(records) => {
             if records.is_empty() {

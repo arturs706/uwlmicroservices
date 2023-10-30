@@ -3,7 +3,55 @@ version: '3.8'
 networks:
   app-network:
 
+volumes:
+  grafana-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+
 services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: surrealdb
+    restart: always
+    networks:
+      - app-network
+    command: start --auth --user ${DB_ACC} --pass ${DB_PASS} file:/data/database.db
+    ports:
+    - 8000:8000
+    volumes:
+    - ./data:/data
+   
+
+  # prometheus:
+  #   image: prom/prometheus
+  #   container_name: prometheus
+  #   volumes:
+  #     - ./prometheus-config:/etc/prometheus
+  #     - ./data/prometheus:/prometheus
+  #   command:
+  #     - --config.file=/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - app-network
+
+  # grafana:
+  #   image: grafana/grafana
+  #   container_name: grafana
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   networks:
+  #     - app-network
+
+
+
+
+
 
 
   # rust-apigw:
@@ -42,14 +90,14 @@ services:
   #   depends_on:
   #     - surrealdb
 
-  surrealdb:
-    image: surrealdb/surrealdb:latest
-    container_name: surrealdb
-    restart: always
-    networks:
-      - app-network
-    command: start --auth --user ${DB_ACC} --pass ${DB_PASS} file:/data/database.db
-    ports:
-    - 8000:8000
-    volumes:
-    - ./data:/data
+
+
+  # grafana:
+  #   image: grafana/grafana-oss:latest
+  #   container_name: grafana
+  #   ports:
+  #     - "3001:3001"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #   restart: unless-stopped
+

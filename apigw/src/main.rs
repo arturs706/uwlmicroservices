@@ -1,138 +1,161 @@
-#![allow(dead_code)]
-
-use hyper::{Body, Request, Response, Server};
-use hyper::service::{make_service_fn, service_fn};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::net::IpAddr;
-use std::time::SystemTime;
+use self::merg_serv::MergServ;
+use axum::{
+    error_handling::HandleErrorLayer,
+    extract::MatchedPath,
+    http::Request,
+    middleware::{self, Next},
+    response::IntoResponse,
+    routing::get,
+    BoxError, Router
+};
+mod errors;
+use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
+use tokio::time::Instant;
+use axum::{extract::ConnectInfo, ServiceExt};
+use std::{future::ready, net::SocketAddr};
+mod merg_serv;
+use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
+use tower::{limit::ConcurrencyLimitLayer, ServiceBuilder};
+use tower_governor::{errors::display_error, governor::GovernorConfigBuilder, GovernorLayer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use dotenv::dotenv;
-use serde::{Deserialize, Serialize};
-use jsonwebtoken::{Header, Algorithm, EncodingKey};
-use chrono::{Utc, Duration};
+mod rest_routes;
+mod mware;
+mod grpc_routes;
+use crate::{grpc_routes::UserAuthProxyService, users_proto::user_auth_server::UserAuthServer};
 
-#[derive(Debug)]
 
-struct RateLimiter {
-    visitors: Arc<Mutex<HashMap<IpAddr, (u32, SystemTime)>>>,
-}
-
-impl RateLimiter {
-    fn new() -> Self {
-        RateLimiter {
-            visitors: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    fn allow(&self, addr: IpAddr) -> bool {
-
-        // grabbing the current time
-        let request_time = SystemTime::now();
-        // locking the hashmap preventing multiple threads from accessing it at the same time
-        let mut visitors = self.visitors.lock().unwrap();
-        // checking if the ip address is in the hashmap, and if it is there, we are returning the value
-        let counter = visitors.entry(addr).or_insert((0, request_time));
-    
-        // Check if 30 seconds have passed since the first request
-        if request_time.duration_since(counter.1).unwrap().as_secs() >= 30 {
-            // Reset the request count and timestamp
-            counter.0 = 0;
-            counter.1 = request_time;
-        }
-        
-        if counter.0 >= 50 {
-            false
-        } else {
-            counter.0 += 1;
-            true
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GatewayAuthClaims {
-    iss: String, // Issuer
-    gateway_access: bool, // Custom claim for gateway access
-    exp: i64, // Expiration Time
-    iat: i64, // Issued At
-}
-
-impl GatewayAuthClaims {
-    pub fn new(issuer: String, gateway_access: bool) -> Self {
-        let iat = Utc::now();
-        let exp = iat + Duration::hours(72);
-    
-        Self {
-            iss: issuer,
-            gateway_access,
-            exp: exp.timestamp(),
-            iat: iat.timestamp(),
-        }
-    }
+mod users_proto {
+    tonic::include_proto!("users");
 }
 
 
-async fn handle_request(req: Request<Body>, rate_limiter: Arc<RateLimiter>, addr: IpAddr) -> Result<Response<Body>, hyper::Error> {
-    let issuer = "gateway".to_string();
-    let gateway_access = true;
-    let jwt_secret: String = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-    let jwt_token = jsonwebtoken::encode(&Header::new(Algorithm::HS256), &GatewayAuthClaims::new(issuer, gateway_access, ),&EncodingKey::from_secret(jwt_secret.as_bytes())).unwrap();
+async fn web_root(
+    insecure_ip: InsecureClientIp,
+    secure_ip: SecureClientIp,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> String {
+    format!(
+        "{insecure_ip:?} {secure_ip:?} {addr}",
+        insecure_ip = insecure_ip,
+        secure_ip = secure_ip,
+        addr = addr
+    )
+}
 
+async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
+    let start = Instant::now();
+    let path = if let Some(matched_path) = req.extensions().get::<MatchedPath>() {
+        matched_path.as_str().to_owned()
+    } else {
+        req.uri().path().to_owned()
+    };
+    let method = req.method().clone();
+    let response = next.run(req).await;
+    let latency = start.elapsed().as_secs_f64();
+    let status = response.status().as_u16().to_string();
+    let labels = [
+        ("method", method.to_string()),
+        ("path", path),
+        ("status", status),
+    ];
 
-    
-    match req.uri().path() {
-        "/service" => {
-            if !rate_limiter.allow(addr) {
-                return Ok(Response::new(Body::from("Rate limit exceeded for service")))
-            } 
-            let client = hyper::Client::new();
-            let forwarded_req = Request::builder()
-                .method(req.method())
-                .uri("http://userservice:11000")
-                // .uri("http://localhost:11000")
-                .header("Authorization", format!("Bearer {}", jwt_token))
-                .body(req.into_body())
-                .unwrap();
-            let mut resp: Response<Body> = client.request(forwarded_req).await?;
-            *resp.status_mut() = hyper::StatusCode::CREATED;
-            Ok(resp)
-        },
-        "/servicetwo" => {
-            if !rate_limiter.allow(addr) {
-                return Ok(Response::new(Body::from("Rate limit exceeded for service")))
-            } 
-            let client = hyper::Client::new();
-            let forwarded_req = Request::builder()
-                .method(req.method())
-                .uri("http://userservice:12000")
-                // .uri("http://localhost:11000")
-                .header("Authorization", format!("Bearer {}", jwt_token))
-                .body(req.into_body())
-                .unwrap();
-            let mut resp: Response<Body> = client.request(forwarded_req).await?;
-            *resp.status_mut() = hyper::StatusCode::CREATED;
-            Ok(resp)
-        },
-        _ => Ok(Response::new(Body::from("Not Found"))), 
-    }
-    
+    metrics::increment_counter!("http_requests_total", &labels);
+    metrics::histogram!("http_requests_duration_seconds", latency, &labels);
+    response
+}
+
+fn setup_metrics_recorder() -> PrometheusHandle {
+    const EXPONENTIAL_SECONDS: &[f64] = &[
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    ];
+
+    PrometheusBuilder::new()
+        .set_buckets_for_metric(
+            Matcher::Full("http_requests_duration_seconds".to_string()),
+            EXPONENTIAL_SECONDS,
+        )
+        .unwrap()
+        .install_recorder()
+        .unwrap()
 }
 
 
+fn metrics_app() -> Router {
+    let recorder_handle = setup_metrics_recorder();
+    Router::new().route("/metrics", get(move || ready(recorder_handle.render())))
+}
+
+fn main_app() -> Router {
+        let governor_conf = Box::new(
+            GovernorConfigBuilder::default()
+                .per_second(2)
+                .burst_size(5)
+                .finish()
+                .unwrap(),
+        );
+        let concurrency_limi_layer = ConcurrencyLimitLayer::new(10);
+
+        Router::new()
+            .route("/", get(web_root))
+            .route("/api/v1/users", get(rest_routes::fetchusershandler))
+            .layer(SecureClientIpSource::ConnectInfo.into_extension())
+            .layer(concurrency_limi_layer)
+            .layer(
+                ServiceBuilder::new()
+                    .layer(HandleErrorLayer::new(|e: BoxError| async move {
+                        display_error(e)
+                    }))
+                    .layer(GovernorLayer {
+                        config: Box::leak(governor_conf),
+                    }),
+            )            
+            .layer(middleware::from_fn(mware::add_token))
+            .route_layer(middleware::from_fn(track_metrics))
+            
+
+            
+}
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let rate_limiter = Arc::new(RateLimiter::new());
-    let make_svc = make_service_fn(|conn: &hyper::server::conn::AddrStream| {
-        let rate_limiter = rate_limiter.clone();
-        let address = conn.remote_addr().ip();
-        let service = service_fn(move |req| handle_request(req, rate_limiter.clone(), address));
-        async move { Ok::<_, hyper::Error>(service) }
-    });
-    let addr = ([0, 0, 0, 0], 10000).into();
-    let server = Server::bind(&addr).serve(make_svc);
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "debuglogs".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+
+
+    async fn start_api_gw() {
+        let userauth_proxy_service = UserAuthProxyService::default();
+        let grpc = tonic::transport::Server::builder()
+        .accept_http1(true)
+        .add_service(UserAuthServer::new(userauth_proxy_service))
+        .into_service();
+
+    
+        let rest = main_app();
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        tracing::debug!("listening on {}", addr);
+        let service: MergServ<Router, tonic::transport::server::Routes> = MergServ::new(rest, grpc);
+        let _ = axum::Server::bind(&addr)
+        .serve(service.into_make_service_with_connect_info::<SocketAddr>())
+        .await;
     }
+
+    async fn start_metrics_server() {
+        let app = metrics_app();
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+        tracing::debug!("listening on {}", addr);
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await
+            .unwrap()
+    }
+    let (_api_gw, _metrics_server) = tokio::join!(start_api_gw(), start_metrics_server());
 }

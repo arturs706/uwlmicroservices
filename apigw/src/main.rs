@@ -23,8 +23,6 @@ mod rest_routes;
 mod mware;
 mod grpc_routes;
 use crate::{grpc_routes::UserAuthProxyService, users_proto::user_auth_server::UserAuthServer};
-
-
 mod users_proto {
     tonic::include_proto!("users");
 }
@@ -64,6 +62,7 @@ async fn track_metrics<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
     metrics::histogram!("http_requests_duration_seconds", latency, &labels);
     response
 }
+
 
 fn setup_metrics_recorder() -> PrometheusHandle {
     const EXPONENTIAL_SECONDS: &[f64] = &[
@@ -113,8 +112,6 @@ fn main_app() -> Router {
             .layer(middleware::from_fn(mware::add_token))
             .route_layer(middleware::from_fn(track_metrics))
             
-
-            
 }
 
 #[tokio::main]
@@ -132,13 +129,14 @@ async fn main() {
 
 
     async fn start_api_gw() {
-        let userauth_proxy_service = UserAuthProxyService::default();
+        let us_prox: UserAuthProxyService = UserAuthProxyService::default();
         let grpc = tonic::transport::Server::builder()
-        .accept_http1(true)
-        .add_service(UserAuthServer::new(userauth_proxy_service))
+        
+        .accept_http1(true)        
+        .add_service(UserAuthServer::new(us_prox))
         .into_service();
 
-    
+
         let rest = main_app();
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         tracing::debug!("listening on {}", addr);

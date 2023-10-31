@@ -1,14 +1,18 @@
 use users::user_auth_client::UserAuthClient;
-use tonic::{transport::Server, Request, Response, Status};
-use users::user_auth_server::{UserAuth, UserAuthServer};
-use users::{UserAuthRequest, UserAuthResponse};
+use users::UserAuthRequest;
+use tonic::{metadata::MetadataValue, transport::Channel, Request};
 pub mod users {
     tonic::include_proto!("users");
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = UserAuthClient::connect("http://127.0.0.1:3000").await?;
+    let channel = Channel::from_static("http://127.0.0.1:3000").connect().await?;
+    let token: MetadataValue<_> = "1".parse()?;
+    let mut client = UserAuthClient::with_interceptor(channel, move |mut req: Request<()>| {
+        req.metadata_mut().insert("authorization", token.clone());
+        Ok(req)
+    });
 
     let request = tonic::Request::new(
         UserAuthRequest {

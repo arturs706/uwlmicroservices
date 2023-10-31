@@ -7,6 +7,9 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use tonic::{Request as TonicRequest, Status};
+use tonic::metadata::MetadataValue;
+
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GatewayAuthClaims {
@@ -40,4 +43,29 @@ pub async fn add_token<B>(req: Request<B>, next: Next<B>) -> Result<Response, Re
     req.headers_mut().insert("Authorization", HeaderValue::from_str(&jwt_token).unwrap());
     let response = next.run(req).await;
     Ok(response)
+}
+
+pub fn check_auth(req: TonicRequest<()>) -> Result<TonicRequest<()>, Status> {
+    let token: MetadataValue<_> = "1".parse().unwrap();
+    match req.metadata().get("authorization") {
+        Some(t) => {
+            if t == &token {
+                println!("{}", t.to_str().unwrap());
+                Ok(req)
+            } else {
+                println!("{}", t.to_str().unwrap());
+                println!("{}", token.to_str().unwrap());
+                Err(Status::unauthenticated(
+                    "No valid auth token",
+                ))
+            }
+        },
+   
+        _ => {
+            println!("{}", token.to_str().unwrap());
+            Err(Status::unauthenticated(
+                "No valid auth token",
+            ))
+        }
+    }
 }

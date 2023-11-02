@@ -1,27 +1,45 @@
 version: '3.8'
 
 networks:
-  app-network:
+  app_network:
 
 volumes:
   grafana-data:
     driver: local
   prometheus-data:
     driver: local
+  staff-users-data:
+    driver: local
 
 
 services:
-  surrealdb:
-    image: surrealdb/surrealdb:latest
-    container_name: surrealdb
+  postgres:
+    image: postgres:13.2
     restart: always
-    networks:
-      - app-network
-    command: start --auth --user ${DB_ACC} --pass ${DB_PASS} file:/data/database.db
-    ports:
-    - 8000:8000
     volumes:
-    - ./data:/data
+      - staff-users-data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    networks:
+      - app_network
+
+
+# services:
+#   surrealdb:
+#     image: surrealdb/surrealdb:latest
+#     container_name: surrealdb
+#     restart: always
+#     networks:
+#       - app-network
+#     command: start --auth --user ${DB_ACC} --pass ${DB_PASS} file:/data/database.db
+#     ports:
+#     - 8000:8000
+#     volumes:
+#     - ./data:/data
    
 
   # prometheus:

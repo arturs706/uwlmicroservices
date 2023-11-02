@@ -12,6 +12,7 @@ mod errors;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use tokio::time::Instant;
 use axum::{extract::ConnectInfo, ServiceExt};
+use tonic_web::GrpcWebLayer;
 use std::{future::ready, net::SocketAddr};
 mod merg_serv;
 use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
@@ -22,10 +23,14 @@ use dotenv::dotenv;
 mod rest_routes;
 mod mware;
 mod grpc_routes;
-use crate::{grpc_routes::UserAuthProxyService, users_proto::user_auth_server::UserAuthServer};
-mod users_proto {
-    tonic::include_proto!("users");
+use crate::{grpc_routes::StaffUsersProxyService, staff_users::staff_users_server::StaffUsersServer};
+pub mod staff_users {
+    tonic::include_proto!("staffusers");
 }
+use tower_http::cors::{Any, CorsLayer};
+use http::Method;
+use tonic::{codegen::http::header::HeaderName, transport::Server};
+
 
 
 async fn web_root(
@@ -94,7 +99,11 @@ fn main_app() -> Router {
                 .unwrap(),
         );
         let concurrency_limi_layer = ConcurrencyLimitLayer::new(10);
-
+        let cors = CorsLayer::new()
+        .allow_headers(Any)
+        .allow_methods([Method::POST, Method::GET, Method::OPTIONS, Method::PUT, Method::DELETE])
+        .allow_origin(["http://localhost:2000".parse().unwrap(), "http://localhost:2001".parse().unwrap(), "http://localhost:2002".parse().unwrap()]);
+        // .allow_origin(Any);
         Router::new()
             .route("/", get(web_root))
             .route("/api/v1/users", get(rest_routes::fetchusershandler))
@@ -111,6 +120,7 @@ fn main_app() -> Router {
             )            
             .layer(middleware::from_fn(mware::add_token))
             .route_layer(middleware::from_fn(track_metrics))
+            .layer(cors)
             
 }
 
@@ -129,20 +139,27 @@ async fn main() {
 
 
     async fn start_api_gw() {
-        let us_prox: UserAuthProxyService = UserAuthProxyService::default();
+        let us_prox: StaffUsersProxyService = StaffUsersProxyService::default();
+        let cors = CorsLayer::new()
+        .allow_headers(Any)
+        .allow_methods([Method::POST, Method::GET, Method::OPTIONS, Method::PUT, Method::DELETE])
+        // .allow_origin(["http://localhost:2000".parse().unwrap(), "https://localhost:2001".parse().unwrap()]);
+        .allow_origin(Any);
         let grpc = tonic::transport::Server::builder()
-        
-        .accept_http1(true)        
-        .add_service(UserAuthServer::new(us_prox))
+        .accept_http1(true)     
+        .layer(cors)
+        .layer(GrpcWebLayer::new()) 
+        .add_service(tonic_web::enable(StaffUsersServer::new(us_prox)))    
         .into_service();
 
 
         let rest = main_app();
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         tracing::debug!("listening on {}", addr);
-        let service: MergServ<Router, tonic::transport::server::Routes> = MergServ::new(rest, grpc);
+        let service = MergServ::new(rest, grpc);
         let _ = axum::Server::bind(&addr)
         .serve(service.into_make_service_with_connect_info::<SocketAddr>())
+        
         .await;
     }
 

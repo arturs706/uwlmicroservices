@@ -1,22 +1,19 @@
 [package]
-name = "usersgrpcserver"
+name = "grpctestclient"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
 tonic = "0.10.2"
 prost = "0.12.1"
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
 dotenv = "0.15.0"
 chrono = "0.4.31"
-sqlx = {version = "0.7.1", features = ["runtime-tokio-native-tls", "postgres", "time", "chrono", "uuid", "bigdecimal"] }
+sqlx = {version = "0.6.2", features = ["runtime-tokio-native-tls", "postgres", "offline", "time", "chrono", "uuid", "bigdecimal"] }
 uuid = { version = "1.4.1", features = ["serde", "v4"] }
 prost-types = "0.12.1"
-tower-http = { version = "0.4.4" , features = ["propagate-header", "cors"] }
-tonic-web = "0.10.2"
-http = "0.2.9"
 
 [build-dependencies]
 tonic-build = "0.10.2"

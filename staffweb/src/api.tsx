@@ -2,7 +2,10 @@ import { grpc } from "@improbable-eng/grpc-web";
 import { SingleUserRetrieve, EmptyReqRes, GrpcWebImpl, AllUserRetrieve, StaffUsersClientImpl } from "./generated/proto/staffusers";
 
 
+// const HOST = "http://127.0.0.1:3000";
+// const HOST = "http://localhost:50050";
 const HOST = "http://localhost:3000";
+
 
 export class GetAllUsers {
     private rpc: GrpcWebImpl;
@@ -10,7 +13,7 @@ export class GetAllUsers {
 
     constructor(usertoken: string) {
         const metadata = new grpc.Metadata();
-        metadata.append('authentication', `Bearer ${usertoken}`);
+        metadata.append('authorization', `Bearer ${usertoken}`);
         this.rpc = new GrpcWebImpl(HOST, { metadata });
         this.client = new StaffUsersClientImpl(this.rpc);
     }

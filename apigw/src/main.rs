@@ -12,7 +12,6 @@ mod errors;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use tokio::time::Instant;
 use axum::{extract::ConnectInfo, ServiceExt};
-use tonic_web::GrpcWebLayer;
 use std::{future::ready, net::SocketAddr};
 mod merg_serv;
 use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
@@ -29,7 +28,6 @@ pub mod staff_users {
 }
 use tower_http::cors::{Any, CorsLayer};
 use http::Method;
-use tonic::{codegen::http::header::HeaderName, transport::Server};
 
 
 
@@ -146,9 +144,9 @@ async fn main() {
         // .allow_origin(["http://localhost:2000".parse().unwrap(), "https://localhost:2001".parse().unwrap()]);
         .allow_origin(Any);
         let grpc = tonic::transport::Server::builder()
-        .accept_http1(true)     
+        .accept_http1(true) 
+        // .layer(GrpcWebLayer::new())     
         .layer(cors)
-        .layer(GrpcWebLayer::new()) 
         .add_service(tonic_web::enable(StaffUsersServer::new(us_prox)))    
         .into_service();
 

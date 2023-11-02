@@ -5,15 +5,10 @@ use dotenv::dotenv;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use uuid::Uuid;
 use crate::staff_users::SingleUserRetrieve;
-use chrono::{NaiveDateTime, DateTime, Utc, TimeZone};
-use prost_types::Timestamp;
 use std::time::SystemTime;
-use tonic_web::GrpcWebLayer;
-use http::Method;
 pub mod staff_users {
     tonic::include_proto!("staffusers");
 }
-use tower_http::cors::{Any, CorsLayer};
 
 
 
@@ -104,9 +99,6 @@ impl StaffUsers for StaffUsersService {
             .expect("Error fetching users");
 
         for row in rows.iter() {
-            // let timestamp: chrono::NaiveDateTime = row.get("account_created");
-            // let account_created_ts = chrono::Utc::now().timestamp_millis();
-
             v.push(
                 SingleUserRetrieve {
                     user_id: row.get("user_id"),
@@ -120,10 +112,6 @@ impl StaffUsers for StaffUsersService {
                 }
             );
         }
-
-
-
-        //print AllUserRetrieve
         dbg!(
             AllUserRetrieve {
                 users: v.clone()
@@ -139,17 +127,9 @@ impl StaffUsers for StaffUsersService {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50055".parse()?;
-    let cors = CorsLayer::new()
-    .allow_headers(Any)
-    .allow_methods([Method::POST, Method::GET, Method::OPTIONS, Method::PUT, Method::DELETE])
-    // .allow_origin(["http://localhost:2000".parse().unwrap(), "https://localhost:2001".parse().unwrap()]);
-    .allow_origin(Any);
+    let addr = "[::1]:50050".parse()?;
     let staff_user_reg_service = StaffUsersService::default();
     Server::builder()
-    .accept_http1(true)
-    .layer(cors)
-    .layer(GrpcWebLayer::new()) 
     .add_service(StaffUsersServer::new(staff_user_reg_service))
     .serve(addr)
     .await?;
